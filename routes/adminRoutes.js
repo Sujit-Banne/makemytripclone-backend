@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
 const adminAuth = require('../middleware/adminAuth');
+const adminEvents = require('../utils/adminEvents');
 const Hotel = require('../models/Hotel');
 const Flight = require('../models/Flight');
 const Visa = require('../models/Visa');
@@ -8,6 +10,49 @@ const User = require('../models/User');
 const VisaApplication = require('../models/VisaApplication');
 const HotelBooking = require('../models/HotelBooking');
 const FlightBooking = require('../models/FlightBooking');
+
+// Stream real-time admin updates (SSE)
+router.get('/stream', async (req, res) => {
+  // EventSource can't send custom headers, so accept token via query parameter.
+  const token = req.query.token || req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+
+  // Set headers for Server-Sent Events
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders();
+
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Send an initial ping so the client knows the connection is live
+  sendEvent({ type: 'connected', timestamp: new Date().toISOString() });
+
+  const onUpdate = (payload) => sendEvent({ type: 'update', payload });
+  adminEvents.on('update', onUpdate);
+
+  req.on('close', () => {
+    adminEvents.off('update', onUpdate);
+  });
+});
 
 // All routes require admin authentication
 router.use(adminAuth);

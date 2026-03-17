@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const adminAuth = require('../middleware/adminAuth');
+const adminEvents = require('../utils/adminEvents');
 const FlightBooking = require('../models/FlightBooking');
 const Flight = require('../models/Flight');
 
@@ -40,6 +41,9 @@ router.post('/book', authMiddleware, async (req, res) => {
 
     await newBooking.save();
     await newBooking.populate('flight user', 'name email flightNumber airline departure arrival');
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'flight_booking_created', booking: newBooking });
 
     res.status(201).json({
       message: 'Flight booking created successfully',
@@ -104,6 +108,9 @@ router.put('/:id/status', adminAuth, async (req, res) => {
     await booking.save();
     await booking.populate('flight user', 'name email flightNumber airline');
 
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'flight_booking_status_updated', booking });
+
     res.json({
       message: 'Booking status updated successfully',
       booking
@@ -158,6 +165,9 @@ router.put('/:id/cancel', authMiddleware, async (req, res) => {
 
     booking.status = 'cancelled';
     await booking.save();
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'flight_booking_cancelled', booking });
 
     res.json({ message: 'Booking cancelled successfully', booking });
   } catch (error) {

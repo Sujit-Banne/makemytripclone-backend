@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const adminAuth = require('../middleware/adminAuth');
+const adminEvents = require('../utils/adminEvents');
 const VisaApplication = require('../models/VisaApplication');
 const Visa = require('../models/Visa');
 
@@ -36,6 +37,9 @@ router.post('/apply', authMiddleware, async (req, res) => {
 
     await newApplication.save();
     await newApplication.populate('visa user', 'name email country visaType');
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'visa_application_created', application: newApplication });
 
     res.status(201).json({
       message: 'Visa application submitted successfully',
@@ -97,6 +101,9 @@ router.put('/:id/status', adminAuth, async (req, res) => {
 
     await application.save();
     await application.populate('visa user', 'name email country visaType');
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'visa_application_status_updated', application });
 
     res.json({
       message: 'Application status updated successfully',

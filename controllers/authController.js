@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const adminEvents = require('../utils/adminEvents');
 
 // Register
 exports.register = async (req, res) => {
@@ -23,6 +24,9 @@ exports.register = async (req, res) => {
     });
 
     await newUser.save();
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'user_registered', user: { id: newUser._id, name: newUser.name, email: newUser.email } });
 
     const token = jwt.sign(
       { id: newUser._id, email: newUser.email },

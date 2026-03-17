@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const adminAuth = require('../middleware/adminAuth');
+const adminEvents = require('../utils/adminEvents');
 const HotelBooking = require('../models/HotelBooking');
 const Hotel = require('../models/Hotel');
 
@@ -33,6 +34,9 @@ router.post('/book', authMiddleware, async (req, res) => {
 
     await newBooking.save();
     await newBooking.populate('hotel user', 'name email name location price');
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'hotel_booking_created', booking: newBooking });
 
     res.status(201).json({
       message: 'Hotel booking created successfully',
@@ -91,6 +95,9 @@ router.put('/:id/status', adminAuth, async (req, res) => {
     await booking.save();
     await booking.populate('hotel user', 'name email name location');
 
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'hotel_booking_status_updated', booking });
+
     res.json({
       message: 'Booking status updated successfully',
       booking
@@ -141,6 +148,9 @@ router.put('/:id/cancel', authMiddleware, async (req, res) => {
 
     booking.status = 'cancelled';
     await booking.save();
+
+    // Notify admin dashboard for realtime updates
+    adminEvents.emit('update', { type: 'hotel_booking_cancelled', booking });
 
     res.json({ message: 'Booking cancelled successfully', booking });
   } catch (error) {
