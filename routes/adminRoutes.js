@@ -365,6 +365,22 @@ router.get('/stats', async (req, res) => {
     const pendingHotelBookings = await HotelBooking.countDocuments({ status: 'pending' });
     const pendingFlightBookings = await FlightBooking.countDocuments({ status: 'pending' });
 
+    const totalHotelBookings = await HotelBooking.countDocuments();
+    const totalFlightBookings = await FlightBooking.countDocuments();
+    const totalVisaApplications = await VisaApplication.countDocuments();
+    const totalBookings = totalHotelBookings + totalFlightBookings + totalVisaApplications;
+
+    // Calculate revenue from confirmed/completed bookings
+    const hotelRevenue = await HotelBooking.aggregate([
+      { $match: { status: { $in: ['confirmed', 'completed'] } } },
+      { $group: { _id: null, total: { $sum: '$totalPrice' } } }
+    ]);
+    const flightRevenue = await FlightBooking.aggregate([
+      { $match: { status: { $in: ['confirmed', 'completed'] } } },
+      { $group: { _id: null, total: { $sum: '$totalPrice' } } }
+    ]);
+    const totalRevenue = (hotelRevenue[0]?.total || 0) + (flightRevenue[0]?.total || 0);
+
     res.json({
       hotels: hotelCount,
       flights: flightCount,
@@ -374,7 +390,86 @@ router.get('/stats', async (req, res) => {
       pendingVisaApplications,
       pendingHotelBookings,
       pendingFlightBookings,
+      totalBookings,
+      totalRevenue,
     });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get recent activities for admin dashboard
+router.get('/recent-activities', async (req, res) => {
+  try {
+    const activities = [];
+
+    // Recent hotel bookings
+    const recentHotelBookings = await HotelBooking.find()
+      .populate('user', 'name')
+      .populate('hotel', 'name')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    recentHotelBookings.forEach(booking => {
+      activities.push({
+        type: 'hotel_booking',
+        message: `Hotel booking: ${booking.hotel.name} by ${booking.user.name}`,
+        timestamp: booking.createdAt,
+        status: booking.status
+      });
+    });
+
+    // Recent flight bookings
+    const recentFlightBookings = await FlightBooking.find()
+      .populate('user', 'name')
+      .populate('flight', 'flightNumber')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    recentFlightBookings.forEach(booking => {
+      activities.push({
+        type: 'flight_booking',
+        message: `Flight booking: ${booking.flight.flightNumber} by ${booking.user.name}`,
+        timestamp: booking.createdAt,
+        status: booking.status
+      });
+    });
+
+    // Recent visa applications
+    const recentVisaApplications = await VisaApplication.find()
+      .populate('user', 'name')
+      .populate('visa', 'country')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    recentVisaApplications.forEach(app => {
+      activities.push({
+        type: 'visa_application',
+        message: `Visa application: ${app.visa.country} by ${app.user.name}`,
+        timestamp: app.createdAt,
+        status: app.status
+      });
+    });
+
+    // Recent user registrations
+    const recentUsers = await User.find({ role: 'user' })
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    recentUsers.forEach(user => {
+      activities.push({
+        type: 'user_registration',
+        message: `New user registration: ${user.name}`,
+        timestamp: user.createdAt,
+        status: 'new'
+      });
+    });
+
+    // Sort all activities by timestamp descending and take top 10
+    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const topActivities = activities.slice(0, 10);
+
+    res.json(topActivities);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
